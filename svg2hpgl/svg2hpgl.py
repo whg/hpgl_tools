@@ -21,6 +21,10 @@ from pprint import pprint
 
 from docopt import docopt
 
+MM_IN_PIXEL = 0.265
+STEPS_PER_MM = 40
+
+
 def get_tag(element):
     return re.search(r'^{[^}]*}([a-z]+)', element.tag).groups()[0]
 
@@ -143,6 +147,7 @@ def offset_paths_for_y(paths):
         for line in path:
             maxy = max(maxy, max(line.start[1], line.end[1]))
 
+    maxy = 719# * STEPS_PER_MM * MM_IN_PIXEL
     for path in paths:
         for line in path:
             line.start = (line.start[0], maxy - line.start[1])
@@ -152,20 +157,21 @@ def offset_paths_for_y(paths):
 if __name__ == "__main__":
 
     args = docopt(__doc__, version=0.1)
-    print(args)
+
     tree = ET.parse(args['<file>'])
     root = tree.getroot()
     group_counter = 1
 
-    POINTS_IN_MM = 2.83465
-    STEPS_PER_MM = 40
-    scale = float(args['--scale']) * STEPS_PER_MM / POINTS_IN_MM
+    scale = float(args['--scale']) * STEPS_PER_MM * MM_IN_PIXEL
     offset = eval(args['--offset'])
+    xo, yo = offset
+    offset = (xo * STEPS_PER_MM, yo * STEPS_PER_MM)
 
     hpgl = args['<file>'].replace('.svg', '.hpgl')
-
+    num_groups = sum([1 if e.tag.endswith('g') else 0 for e in root.getchildren()])
+    
     with open(hpgl, 'w') as f:
-        f.write('SP1;\n')
+        f.write('SP1;VS10;\n')
         for child in root.getchildren():
             tag = get_tag(child)
             if tag == 'g':
@@ -177,16 +183,14 @@ if __name__ == "__main__":
                 paths = line_set.find_paths()
 
                 if args['--pen-colour']:
-                    f.write('SP{};'.format(group_counter))
+                    if num_groups > 3:
+                        pen_number = [1, 4, 2, 3, 5][group_counter-1]
+                    else:
+                        pen_number = group_counter
+                    f.write('SP{};'.format(pen_number))
 
-                print(paths[0][0])
                 offset_paths_for_y(paths)
                 transform_paths(paths, scale, offset)
-                print(paths[0][0])
-
-                print(paths[0][0])
-
-                print()
                     
                 for path in paths:
                     f.write('PU{},{};\n'.format(int(path[0].start[0]), int(path[0].start[1])))
